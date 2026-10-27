@@ -16,6 +16,8 @@
  *  @reference Teensy Examples: analogContinuousRead.ino, adc_dma.ino
  *  @author David Smith
  *
+ *  0.9.8  2026-10-27
+ *   - formatV: nan path uses a literal format; comments on edge handling
  *  0.9.7  2026-09-29
  *   - ENERGIZE/PWR pins and elapsed* timers removed (HV enable to be tied to RUN)
  *   - burst starts on RUN falling edge; repeating burst mode removed
@@ -37,7 +39,7 @@
 #define HW_BAUDRATE 2000000   // [baud] T4 UART ok to ~6M; adapter limit: CP2102N ~3M, FT232R 3M, FT232H 12M
 
 // --------------------------------------------------------------------------------------
-const char    *VERSION            = "0.9.7";
+const char    *VERSION            = "0.9.8";
 const uint32_t V_REF_MV           = 3297;    // [mV] measured reference (3300 nominal)
 const uint32_t SAMPLE_INTERVAL_US = 100;     // [us] sample period
 // approx min SAMPLE_INTERVAL_US:
@@ -114,6 +116,7 @@ void loop() {
 
   switch (state) {
     case ST_IDLE:
+      // note: if RUN is already LOW at power-up, that counts as an edge (one burst fires)
       if (run_fell) {                 // run start: latch mode, print header, start
         run_fell = false;
         capture_mode = digitalReadFast(MODE_PIN) ? CM_CONTINUOUS : CM_BURST;
@@ -123,7 +126,7 @@ void loop() {
         } else {
           captureBurst();             // blocking; edges during capture/print are ignored
           printBurst();
-          run_fell = false;
+          run_fell = false;             // ignore edges that arrived during capture/print
         }
       }
       break;
@@ -284,7 +287,7 @@ void formatV(char *buf, size_t n, uint16_t c1, uint16_t c2) {
   // counts -> volts, CSV, 3 decimals (1 count = 0.8 mV); integer math, no float printf
   bool ok = (c1 != ADC_BAD && c2 != ADC_BAD);
   if (!ok) {
-    snprintf(buf, n, PRINT_DIFF ? "nan,nan,nan\n" : "nan,nan\n");
+    snprintf(buf, n, "%s", PRINT_DIFF ? "nan,nan,nan\n" : "nan,nan\n");
     return;
   }
   int32_t m1 = countsToMv(c1), m2 = countsToMv(c2);
